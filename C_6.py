@@ -1,80 +1,85 @@
 import os
 import cv2
 import matplotlib.pyplot as plt
-from google.colab import drive
-import numpy as np # Added numpy import for returning empty arrays
+import numpy as np
 
-# 1. Montar Google Drive
-# drive.mount('/content/drive') # Already mounted by a previous cell, uncomment if needed
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# 2. Definir la ruta del directorio y los archivos
-# !!! ATENCIÓN: DEBES CAMBIAR ESTA RUTA POR LA RUTA REAL DONDE TIENES TUS IMÁGENES EN GOOGLE DRIVE !!!
-# Por ejemplo: '/content/drive/MyDrive/MiCarpetaDeImagenes'
-folder_path = '/content/'  # <--- ACTUALIZA ESTA LÍNEA
-file_chevrolet = os.path.join(folder_path, 'Chevrolet1.jpeg')
-file_mazda = os.path.join(folder_path, 'Mazda1.jpeg')
+file_mazda = os.path.join(script_dir, 'Mazda1.jpeg')
+file_toyota = os.path.join(script_dir, 'toyota-logo.png')
 
-def obtener_y_graficar_contornos(ruta_imagen, titulo="Contorno del Logo"):
+
+def extraer_y_graficar_contornos(ruta_imagen, titulo="Logo", guardar_csv=True):
     """
-    Lee una imagen, procesa sus contornos y grafica las coordenadas (X, Y).
+    Lee la imagen, extrae las coordenadas (X, Y) de todos los contornos,
+    los grafica y retorna una lista de arrays con las coordenadas de cada trazo.
     """
-    # Cargar la imagen
     img = cv2.imread(ruta_imagen)
     if img is None:
-        print(f"Error: No se pudo cargar la imagen desde {ruta_imagen}")
-        return np.array([]), np.array([]) # Return empty numpy arrays on failure
+        print(f"Error: No se encontró la imagen en {ruta_imagen}")
+        return []
 
-    # Convertir a escala de grises
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Aplicar umbralizado (Binarización) para separar el logo del fondo
-    # Ajusta cv2.THRESH_BINARY_INV según si el fondo es claro u oscuro
-    # Se agrega THRESH_OTSU para un umbralizado automático más robusto.
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Encontrar contornos
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # Extraer todos los contornos
+    contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
-    if not contours:
-        print(f"No se encontraron contornos en {titulo}")
-        return np.array([]), np.array([]) # Return empty numpy arrays on no contours
+    puntos_por_contorno = []
+    todos_los_puntos = []
 
-    # Seleccionar el contorno con mayor área (asumiendo que es el logo principal)
-    main_contour = max(contours, key=cv2.contourArea)
+    plt.figure(figsize=(9, 6))
 
-    # Extraer las coordenadas X e Y
-    # El contorno devuelto por OpenCV tiene forma (N, 1, 2)
-    x_coords = main_contour[:, 0, 0]
-    y_coords = main_contour[:, 0, 1]
+    for i, contour in enumerate(contours):
+        # Extraer arreglos X e Y
+        x = contour[:, 0, 0]
+        y = contour[:, 0, 1]
 
-    # Graficar las coordenadas
-    plt.figure(figsize=(8, 6))
-    plt.plot(x_coords, y_coords, color='blue', linewidth=1.5, label='Contorno detectado')
+        # Guardar en las listas de retorno
+        coordenadas_contorno = np.column_stack((x, y))
+        puntos_por_contorno.append(coordenadas_contorno)
 
-    # Invertir el eje Y porque en imágenes el origen (0,0) está en la esquina superior izquierda
+        # Graficar
+        plt.plot(x, y, color='blue', linewidth=1)
+
+        # Acumular para exportar
+        for px, py in zip(x, y):
+            todos_los_puntos.append([i + 1, px, py])
+
     plt.gca().invert_yaxis()
-
-    plt.title(f"Coordenadas del Contorno: {titulo}")
+    plt.title(f"Coordenadas de TODOS los Contornos: {titulo}")
     plt.xlabel("Coordenada X (píxeles)")
     plt.ylabel("Coordenada Y (píxeles)")
     plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend()
+
+    # --- Opcional: Guardar coordenadas en archivo CSV ---
+    if guardar_csv and todos_los_puntos:
+        nombre_csv = os.path.join(script_dir, f"coordenadas_{titulo.lower()}.csv")
+        np.savetxt(
+            nombre_csv,
+            todos_los_puntos,
+            fmt='%d',
+            delimiter=',',
+            header='ID_Contorno,X,Y',
+            comments=''
+        )
+        print(f"-> Coordenadas guardadas en: {nombre_csv}")
+
     plt.show()
 
-    return x_coords, y_coords
+    return puntos_por_contorno
 
-# 3. Procesar y graficar ambos logos
-# Primero, verifica que la ruta de la carpeta existe
-if not os.path.exists(folder_path):
-    print(f"[ADVERTENCIA]: La ruta '{folder_path}' no existe. Asegúrate de actualizar 'folder_path' con la ruta correcta a tus imágenes.")
-else:
-    print("Procesando logo de Chevrolet...")
-    x_chevrolet, y_chevrolet = obtener_y_graficar_contornos(file_chevrolet, "Chevrolet")
 
-    print("Procesando logo de Mazda...")
-    x_mazda, y_mazda = obtener_y_graficar_contornos(file_mazda, "Mazda")
+# --- EJECUCIÓN Y USO DE LOS PUNTOS ---
 
-    # Puedes añadir aquí impresiones de las coordenadas si lo deseas, por ejemplo:
-    # if x_chevrolet.size > 0:
-    #     print(f"Primeras 5 coordenadas X para Chevrolet: {x_chevrolet[:5]}")
-    #     print(f"Primeras 5 coordenadas Y para Chevrolet: {y_chevrolet[:5]}")
+print("Procesando Mazda...")
+coordenadas_mazda = extraer_y_graficar_contornos(file_mazda, "Mazda")
+
+print("\nProcesando Toyota...")
+coordenadas_toyota = extraer_y_graficar_contornos(file_toyota, "Toyota")
+
+# Ejemplo: Cómo acceder a los puntos directamente en Python
+if coordenadas_mazda:
+    primer_contorno = coordenadas_mazda[0]  # Array Nx2 del primer trazo
+    print(f"\nTotal de contornos detectados en Mazda: {len(coordenadas_mazda)}")
+    print(f"Primeros 5 puntos del Contorno 1 (X, Y):\n{primer_contorno[:5]}")
